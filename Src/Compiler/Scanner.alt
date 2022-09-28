@@ -1,0 +1,329 @@
+Scanner: MODULE
+
+  IMPORT Basic;
+  
+ 
+  
+  ! tokens    
+  keyNone: PUBLIC CONST INT = 0;
+  keyComment: PUBLIC CONST INT = 1;
+  ! relation operators  
+  keyAs: PUBLIC CONST INT= 10;
+  keyEqual: PUBLIC CONST INT = 11;
+  keyGreater: PUBLIC CONST INT = 12;
+  keyGreaterEqual: PUBLIC CONST INT = 13;
+  keyIn: PUBLIC CONST INT = 14;
+  keyIs: PUBLIC CONST INT = 15;
+  keyLess: PUBLIC CONST INT = 16;
+  keyLessEqual: PUBLIC CONST INT = 17;
+  keyNotEqual: PUBLIC CONST INT = 18;
+  ! factor operators 
+  keyAnd: PUBLIC CONST INT = 20;
+  keyDiv: PUBLIC CONST INT = 21;
+  keyMod: PUBLIC CONST INT = 22;
+  keySlash: PUBLIC CONST INT = 23;
+  keyTimes: PUBLIC CONST INT = 24;
+  ! term operators  
+  keyOr: PUBLIC CONST INT = 30;
+  keyMinus: PUBLIC CONST INT = 38;  ! also prefix unary operator
+  keyPlus: PUBLIC CONST INT = 39;   ! also prefix unary operator
+  
+  Token: PUBLIC TYPE RECORD
+    key: PUBLIC INT;
+    position: PUBLIC Basic.Position;
+    name: PUBLIC Basic.Name;
+    integer: PUBLIC INT;
+    char: PUBLIC CHAR;
+    string: PUBLIC Basic.String;
+    length: PUBLIC INT;
+    float32: PUBLIC FLT32;
+    fltoa64: PUBLIC FLT64;
+  END;
+        
+  ! keywords  
+  Keyword: TYPE RECORD   
+    name: Basic.Name;
+     key: INT
+  END;
+  
+  maxKwd: CONST INT = 45;
+  kwdCount: VAR INT;
+  kwdTable: VAR ARRAY maxKwd OF Keyword;
+  
+  EnterKeyword: PROCEDURE (name: STRING; key: INT)
+  DO
+    IF kwdCount < maxKwd THEN
+      kwdTable[kwdCount].key := key;
+      kwdTable[kwdCount].name := name;
+      INC(kwdCount)
+    ELSE
+      Log.InternalError("Scanner.EnterKeyword") 
+    END
+  END;
+  
+  ! enter keywords in alphabetical order
+  InitializeKeywords: PROCEDURE
+  DO
+    kwdCount := 0;    
+    EnterKeyword("ABSTRACT", keyAbstract);            
+    EnterKeyword("AND", keyAnd);
+    EnterKeyword("ARRAY", keyArray);
+    EnterKeyword("AS", keyAs);
+    EnterKeyword("BY", keyBy);
+    EnterKeyword("CASE", keyCase);
+    EnterKeyword("CDECL", keyCdecl);
+    EnterKeyword("CLASS", keyClass);
+    EnterKeyword("CONST", keyConst);           
+    EnterKeyword("DIV", keyDiv);
+    EnterKeyword("DO", keyDo);
+    EnterKeyword("ELSE", keyElse);
+    EnterKeyword("ELSIF", keyElsif);
+    EnterKeyword("END", keyEnd);
+    EnterKeyword("EXTERNAL", keyExternal);
+    EnterKeyword("FOR", keyFor);
+    EnterKeyword("IF", keyIf);
+    EnterKeyword("IMPORT", keyImport);
+    EnterKeyword("IN", keyIn);
+    EnterKeyword("IS", keyIs);
+    EnterKeyword("LIMITED", keyLimited);
+    EnterKeyword("METHOD", keyMethod);
+    EnterKeyword("MOD", keyMod);
+    EnterKeyword("MODULE", keyModule);
+    EnterKeyword("NIL", keyNil);
+    EnterKeyword("NOT", keyNot);
+    EnterKeyword("OF", keyOf);
+    EnterKeyword("OR", keyOr);
+    EnterKeyword("PACKED", keyPacked);
+    EnterKeyword("POINTER", keyPointer);
+    EnterKeyword("PROCEDURE", keyProcedure);
+    EnterKeyword("PUBLIC", keyPublic);
+    EnterKeyword("RECORD", keyRecord);
+    EnterKeyword("REPEAT", keyRepeat);
+    EnterKeyword("RETURN", keyReturn);
+    EnterKeyword("RETURNS", keyReturns);
+    EnterKeyword("STDCALL", keyStdcall);
+    EnterKeyword("THEN", keyThen);
+    EnterKeyword("TO", keyTo);
+    EnterKeyword("TYPE", keyType);
+    EnterKeyword("UNTIL", keyUntil);
+    EnterKeyword("VAR", keyVar);
+    EnterKeyword("WHEN", keyWhen);
+    EnterKeyword("WHILE", keyWhile);
+    EnterKeyword("WITH", keyWith);
+  END;
+  
+  ! input
+  eof: CONST INT = CHR(3);
+  lf: CONST INT = CHR(0xA);
+  maxBuffer: CONST INT = 8192;
+  buffer: VAR ARRAY maxBuffer OF CHAR; =  
+  bufferIdx: VAR INT;
+  count: VAR INT;
+  char: VAR CHAR;
+  position: Basic.Position;
+  
+  ReadChar: PROCEDURE()
+  DO 
+    IF bufferIdx < inputCount THEN
+      char := buffer[bufferIdx];
+      INC(bufferIdx)
+    ELSE
+      count := source.ReadBlock(buffer, 0, maxBuffer);
+      IF count = 0 THEN
+        char := eof
+      ELSE
+        char := buffer[0];
+        bufferIdx := 1;
+      END  
+    END
+    IF char = lf THEN
+      INC(position.row);
+      position.column := 0
+    ELSE
+      INC(position.column)
+    END
+  END;
+  
+  ! output
+  quote: CONST CHAR = CHR(0x27);
+  quote: CONST CHAR = CHR(0x22);
+  
+  GetChar: PROCEDURE(token: VAR Token)
+    key, i: VAR INT
+  DO  
+    key := keyChar;
+    i := 0;
+    ReadChar();
+    WHILE (char # quote) AND (char # eof) DO
+      IF char < ' ' THEN       
+        Log.Error("Invalid character in character literal", position);
+      ELSIF i < 2 THEN
+        token.char := char;
+        INC(i)
+      END;
+      ReadChar();
+    END;
+    IF char = eof THEN
+      Log.Error("character literal not delimited", position);
+      key := keyEof
+    ELSIF i = 0 THEN
+      Log.Error("Empty character literal", position);
+    ELSIF i > 1 THEN
+      Log.Error("Too many characters in character literal", position);
+    END;
+    RETURN key
+  END;
+  
+  SkipComment : PROCEDURE () RETURNS INT
+    level, key: VAR INT
+  DO
+    ReadChar();
+    IF char = '*' THEN
+      !* block comment *!
+      level := 1;      
+      WHILE (level > 0) AND (char # eof) DO.     
+        ReadChar();
+        IF char = '!' THEN
+          ReadChar();
+          IF char = '*' THEN
+            IF level < MAX(INT) THEN
+              INC(level)            
+            ELSE
+              ! too many nested comments
+              level := -1
+            END
+          END
+        ELSIF char ='*' THEN
+          ReadChar();
+          IF char = '!' THEN
+            DEC(level)
+          END        
+        END
+      END
+    ELSE
+      ! line comment
+      WHILE (char # lf) AND (char # eof) DO
+        ReadChar()
+      END;
+      if char = lf THEN
+        key := keyComment
+      ELSE
+        key := keyEof
+      END
+    END  
+  END;
+  
+  GetToken: PUBLIC PROCEDURE(token: VAR Token)
+    key: VAR INT
+  DO    
+    REPEAT
+      ! skip space and control characters but eof
+      WHILE (char <= ' ') AND (char # eof) DO
+        ReadChar()
+      END;
+      token.position := position;
+      CASE char
+        WHEN '!' DO
+          key := SkipComment()
+        WHEN '"' DO
+          key := GetString(token)
+        WHEN '#' DO
+          ReadChar();
+          key := keyNe
+        WHEN '&' DO
+          ReadChar();
+          key := keyBitAnd
+        WHEN CHR(0x27) DO
+          key := GetChar(token)
+        WHEN '(' DO
+          ReadChar();
+          key := keyLeftParen
+        WHEN ')' DO
+          ReadChar();
+          key := keyRightParen
+        WHEN '*' DO
+          ReadChar();
+          key := keyTimes
+        WHEN '+' DO
+          ReadChar();
+          key := keyPlus
+        WHEN ',' DO
+          ReadChar();
+          key := keyComma
+        WHEN '-'  DO
+          ReadChar();
+          key := keyMinus
+        WHEN '.' DO
+          ReadChar();
+          key := keyPeriod
+        WHEN '/' DO 
+          ReadChar();
+          key := keySlash
+        WHEN '0' TO '9' DO
+          key := GetNumber(token)
+        WHEN ':' DO
+          ReadChar();
+          IF char = '=' THEN
+            ReadChar();
+            key := keyBecomes
+          ELSE
+            key := keyColon
+          END
+        WHEN ';' DO
+          ReadChar();
+          key := keySemicolon
+        WHEN '<' DO
+          ReadChar();
+          IF char ='=' THEN
+            ReadChar();
+            key := keyLessEqual
+          ELSE  
+            key := keyLess
+          END  
+        WHEN '=' DO
+          ReadChar();
+          key := keyEqual
+        WHEN '>' DO
+          ReadChar();
+          IF char = '=' THEN
+            ReadChar();
+            key := keyGreaterEqual
+          ELSE  
+            key := keyGreater
+          END  
+        WHEN 'A' TO 'Z' DO
+          key := GetIdentifier(token, TRUE);          
+        WHEN '[' DO
+          ReadChar();
+          key := keyLeftBraket
+        WHEN ']' DO
+          ReadChar();
+          key := keyRightBraket
+        WHEN '^' DO
+          ReadChar();
+          key := keyArrow
+        WHEN '_' DO
+          key := GetIdentifier(token, FALSE);
+        WHEN 'a' TO 'z' DO
+          key := GetIdentifier(token, FALSE);
+        WHEN '{' DO
+          ReadChar();
+          key := keyLeftBrace
+        WHEN '|' DO
+          ReadChar();
+          key := keyBitOr
+        WHEN '}' DO
+          ReadChar();
+          key := keyRightBrace
+        WHEN '~' DO
+          ReadChar();
+          key := keyBitNot
+      ELSE
+        ReadChar();
+        key := keyNone         
+      END
+    UNTIL key # keyComment;
+    token.key := key
+  END
+  
+END
