@@ -1,0 +1,35 @@
+Parser: MODULE
+  IMPORT Basic, Scanner;
+  
+  token: VAR Scanner.Token;
+  
+  Identifier: POINTER TO RECORD
+    name: Basic.Name;
+    position: Basic.Position;
+    next: Identifier
+  END;
+  
+  GetIdentifier: PROCEDURE() RETURNS Identifier
+  DO
+    NEW(identfiier);
+    identifier.name := token.name;
+    identifier.position := token.position;
+    identifier.next := NIL;
+    last := identfier;
+    Scanner.GetToken(token);
+    WHILE token.key = Scanner.keyComma DO
+      Scanner.GetToken(token);
+      IF token.key = Scanner.keyIdentifier THEN
+        NEW(last.next);
+        last.next.name := token.name;
+        last.next.position := token.position;
+        last.next.next := NIL;
+        last := last.next;
+      ELSE
+        Log.Error("Identifier expected after ','", token.position)
+      END
+    END;
+    RETURN identifier
+  END;
+  
+END
