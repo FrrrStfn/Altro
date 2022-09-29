@@ -1,9 +1,7 @@
 Scanner: MODULE
 
   IMPORT Basic;
-  
- 
-  
+   
   ! tokens    
   keyNone: PUBLIC CONST INT = 0;
   keyComment: PUBLIC CONST INT = 1;
@@ -145,8 +143,7 @@ Scanner: MODULE
   END;
   
   ! output
-  quote: CONST CHAR = CHR(0x27);
-  quote: CONST CHAR = CHR(0x22);
+  quote: CONST CHAR = CHR(0x27);  
   
   GetChar: PROCEDURE(token: VAR Token)
     key, i: VAR INT
@@ -174,6 +171,78 @@ Scanner: MODULE
     RETURN key
   END;
   
+  GetIdentifier: PROCEDURE(token: VAR Token; checkKwd: BOOL) RETURNS INT
+    i, low, mid, high: VAR INT;
+    name: VAR Basic.Name
+  DO  
+    i := 0;             
+    name[i] := CHR(0);
+    WHILE ('0' <= char) AND (char <= '9') OR
+          ('A' <= char) AND (char <= 'Z') OR
+          ('a' <= char) AND (char <= 'z') OR                   
+          char = '_') DO
+      IF i < Basic.maxNameLength THEN
+        name[i] := char;
+        INC(i)
+      END;     
+      ReadChar()
+    END;
+    token.name := name;  
+    key := keyIdentifier;
+    IF i = Basic.maxNameLength THEN  
+      Log.Error("Identifier too long", position)
+    ELSE
+      IF checkKwd THEN
+        low := 0;
+        high := maxKwd;
+        WHILE low < high DO
+          mid := (low + high) DIV 2;
+          IF name < kwdTable[mid].name THEN
+            high := mid
+          ELSE
+            low := mid + 1
+          END
+        END;
+        IF (low < maxKwd) AND (name = kwdTable[low].name) THEN
+          key := kwdTable[low].key
+        END
+      END  
+    END;  
+    RETURN key
+  END;
+  
+  GetString: PROCEDURE(token: VAR token) RETURNS INT
+    key, i: VAR INT;
+    string: Basic.String;            
+  DO
+    i := 0;
+    string[0] := CHR(0);
+    ReadChar();
+    WHILE (char # '"') AND (char # eof) DO
+      IF char < ' ' THEN
+        Log.Error("Invalid character in string literal", position)
+      END;
+      IF i < Basic.maxStringLength THEN
+        string[i] := char;
+        INC(i)
+      END;
+      ReadChar()
+    END;    
+    IF char = eof THEN
+      Log.Error("string literal not delimited", position);
+      key := keyEof;
+    ELSE
+      string[i] = CHR(0);
+      key := keyString;
+      token.string := string;
+      token.length := i;
+      IF i = Basic.maxStringLength THEN
+        Log.Error("Too many characters in string literal", position)      
+      END
+    END;  
+    RETURN key
+  END;        
+        
   SkipComment : PROCEDURE () RETURNS INT
     level, key: VAR INT
   DO
