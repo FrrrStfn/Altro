@@ -255,6 +255,7 @@ Scanner: MODULE
         IF char = '!' THEN
           ReadChar();
           IF char = '*' THEN
+            ReadChar();
             IF level < MAX(INT) THEN
               INC(level)            
             ELSE
@@ -268,7 +269,16 @@ Scanner: MODULE
             DEC(level)
           END        
         END
-      END
+      END;
+      IF level > 0 THEN
+        Log.Error("Comment not closed", position);
+        key := keyEof
+      ELSIF level < 0 THEN
+        Log.Error("Too many nested comment", position);
+        key := keyComment
+      ELSE
+        key := keyComment
+      END   
     ELSE
       ! line comment
       WHILE (char # lf) AND (char # eof) DO
